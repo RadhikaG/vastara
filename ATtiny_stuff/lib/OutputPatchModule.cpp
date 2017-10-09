@@ -3,7 +3,8 @@
 
 #include "OutputPatchModule.h"
 
-OutputPatchModule::OutputPatchModule() : PatchModule() {}
+OutputPatchModule::OutputPatchModule(uint8_t slaveAddr) : 
+    PatchModule(slaveAddr) {}
 
 void OutputPatchModule::receiveEvent(int numBytes) {
     // Some sanity checks...
@@ -19,7 +20,7 @@ void OutputPatchModule::receiveEvent(int numBytes) {
     numBytes--;
 
     if (numBytes == 0) {
-        // Write was only to set buffer for next read
+        // write was only to set buffer position `reg_position` for next read
         return;
     }
 
@@ -29,5 +30,7 @@ void OutputPatchModule::receiveEvent(int numBytes) {
         if (reg_position >= reg_size) {
             reg_position = 0;
         }
+
+        numBytes--;
     }
 }

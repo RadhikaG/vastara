@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 #include "OutputPatchModule.h"
-#define I2C_SLAVE_ADDRESS 0x21
+#define VIB_SLAVE_ADDR 0x21
 
 class VibMotorModule : public OutputPatchModule {
 
@@ -13,6 +13,6 @@ public:
 
     VibMotorModule();
     void writeOutput();
-}
+};
 
 #endif

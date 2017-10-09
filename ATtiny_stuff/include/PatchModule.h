@@ -1,6 +1,8 @@
 #ifndef PATCHMODULE_H
 #define PATCHMODULE_H
 
+#include <inttypes.h>
+
 class PatchModule {
     // Abstract base class for patch modules
     // All patch modules inherit from this class;
@@ -31,14 +33,15 @@ public:
     // Rest are available to patch module sensors/output modules.
 
     // for i2c
-    static const uint8_t reg_size = 2;
+    uint8_t I2C_SLAVE_ADDRESS;
+    const uint8_t reg_size = 4;
     volatile uint8_t i2c_regs[reg_size];
     volatile uint8_t reg_position;
 
     // InputPatchModules essentially just fill up `i2c_regs` in different ways for each subclass of `InputPatchModule`.
     // OutputPatchModules read off `i2c_regs` in different ways for each subclass of `OutputPatchModule`.
 
-    PatchModule();
-}
+    PatchModule(uint8_t slaveAddr);
+};
 
 #endif

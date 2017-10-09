@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 #include "InputPatchModule.h"
-#define I2C_SLAVE_ADDRESS 0x11
+#define LDR_SLAVE_ADDR 0x11
 
 class LDRModule : public InputPatchModule {
 
@@ -13,6 +13,6 @@ public:
 
     LDRModule();
     void readSensor();
-}
+};
 
 #endif

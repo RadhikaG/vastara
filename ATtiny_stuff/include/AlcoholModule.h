@@ -3,16 +3,16 @@
 
 #include <Arduino.h>
 #include "InputPatchModule.h"
-#define I2C_SLAVE_ADDRESS 0x13
+#define ALC_SLAVE_ADDR 0x13
 
 class AlcoholModule : InputPatchModule {
 
 public:
 
-    static const uint8_t AlcoholPin = A3;
+    static const uint8_t alcoholPin = A3;
 
     AlcoholModule();
     void readSensor();
-}
+};
 
 #endif

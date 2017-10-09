@@ -3,7 +3,12 @@
 
 #include "InputPatchModule.h"
 
-void InputPatchModule::requestEvent() {
+InputInputPatchModule(uint8_t slaveAddr) : 
+    PatchModule(slaveAddr) {
+    pinMode(switchPin, INPUT);
+}
+
+void InputrequestEvent() {
     TinyWireS.send(i2c_regs[reg_position]);
 
     reg_position++;
