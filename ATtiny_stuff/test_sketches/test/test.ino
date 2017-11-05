@@ -1,4 +1,3 @@
-#include <usiTwiSlave.h>
 #include <TinyWireS.h>
 
 #include "InputPatchModule.h"
