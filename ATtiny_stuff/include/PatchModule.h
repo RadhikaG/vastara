@@ -34,7 +34,7 @@ public:
 
     // for i2c
     uint8_t I2C_SLAVE_ADDRESS;
-    const uint8_t reg_size = 4;
+    static const uint8_t reg_size = 4;
     volatile uint8_t i2c_regs[reg_size];
     volatile uint8_t reg_position;
 

@@ -2,6 +2,8 @@
 #define INPUTMODULE_H
 
 #include "PatchModule.h"
+#define LDR_SLAVE_ADDR 0x11
+#define ALC_SLAVE_ADDR 0x13
 
 class InputPatchModule : public PatchModule {
 
@@ -28,8 +30,30 @@ public:
     // Byte 1: don't care
     // Byte 2: Integer value of tangible switch (0/1 currently)
     //
-    // `readSensor()` runs in the background (not in the main loop) using timer interrupts
+    // `readSensor()` runs in the background (not in the main loop) using timer 
+    // interrupts
     virtual void readSensor() = 0;
+};
+
+
+class AlcoholModule : InputPatchModule {
+
+public:
+
+    static const uint8_t alcoholPin = A3;
+
+    AlcoholModule();
+    void readSensor();
+};
+
+class LDRModule : public InputPatchModule {
+
+public:
+
+    static const uint8_t LDRPin = A3;
+
+    LDRModule();
+    void readSensor();
 };
 
 #endif
