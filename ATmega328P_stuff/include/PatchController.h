@@ -1,21 +1,22 @@
 #ifndef PATCHCONTROLLER_H
 #define PATCHCONTROLLER_H
 
-#include <Wire.h>
 #include <inttypes.h>
 #define NOF_REQ_BYTES 4 ///< check PatchModule.h for size of `i2c_regs`
 #define MAX_DEVICES 5 ///< 128 is theoretical limit for I2C; this is for our system
+#define CURRENT 0
+#define CONFIG 1
 
 //---------- Global ISR Routines and Variables -------------//
 
-enum PatchStatus {
+enum MasterStatus {
     COMPLETELY_DISCONNECTED,
     IFTTT_INVALID,
     TANGIBLE_INVALID,
     VALID_CONNECTED
 }; 
 
-enum PatchMode {
+enum MasterMode {
     TANGIBLE,
     IFTTT
 };
@@ -25,7 +26,22 @@ enum InputLogic {
     AND
 };
 
-volatile PatchStatus masterStatus; ///< value depends on status of central patch
+enum InputParam {
+    DATA = 0,
+    ACTIVE_STATE = 2
+};
+
+enum ConfigState {
+    NOT_STARTED,
+    LOGIC,
+    DEVICE_ADDR0,
+    DEVICE_ADDR1,
+    DEVICE_ACTIVE_STATE,
+    DONE,
+    ERROR
+};
+
+volatile MasterStatus masterStatus; ///< value depends on status of central patch
 // Sets the delay for the status LED blinking frequency, whenever the device
 // status is changed.
 void setStatusLEDDelay();
@@ -34,7 +50,7 @@ void statusLEDISR();
 
 // Modified by an ISR set for an onboard slider switch.
 // Controls if system is configured tangibly or via IFTTT.
-volatile PatchMode masterMode; 
+volatile MasterMode masterMode; 
 // And the slider switch ISR for modifying the above variable.
 void modeSwitchISR();
 
@@ -94,11 +110,13 @@ public:
     // (which is why we have the validateIfttt() and the validateTangible()
     // functions to check if the current state is the same as the user config)
 
+    uint8_t nof_config_devices;
+    uint8_t configDevices[MAX_DEVICES];
     uint8_t nof_config_inputs;
     uint8_t configInputDevices[MAX_DEVICES];
     uint8_t nof_config_outputs;
     uint8_t configOutputDevices[MAX_DEVICES];
-    uint8_t configActiveState[16];
+    uint8_t configActiveState[16]; // 16 * 8 = 128
 
     //-----------------------------------------------------------------------//
 
@@ -112,17 +130,29 @@ public:
     // Called by setStatus.
     void validateIfttt();
     void validateTangible();
-    void setStatus();
+    void updateMasterStatus();
 
     // I2C-specific functions for dumping data to and fro.
     void sendDataTo(uint8_t slaveAddr, uint8_t data);
-    void receiveDataFrom(uint8_t slaveAddr);
+    uint16_t receiveDataFrom(uint8_t slaveAddr, InputParam inputParam);
 
     // Finds all the I2C devices on the bus. 
     // Invokes validateIfttt or validateTangible after scanning done.
     void scanForI2CDevices();
     // Application logic loop.
     void pollDevices();
+
+    //------------------ Helper functions ------------------//
+
+    uint8_t isInput(uint8_t slaveAddr);
+    uint8_t isOutput(uint8_t slaveAddr);
+    void initVariables(uint8_t varType);
+    void copyArray(uint8_t n, uint8_t dest[], uint8_t src[]);
+
+    uint8_t getActiveState(uint8_t activeStateArr[], uint8_t slaveAddr);
+    void setActiveState(uint8_t activeStateArr[], uint8_t slaveAddr, uint8_t state);
+
+    //------------------------------------------------------//
 }
 
 #endif
