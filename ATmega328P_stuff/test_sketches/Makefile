@@ -1,7 +1,6 @@
 sketch_name = test
 
-symlink: ../lib ../include remlink
-	ln -s -r ../lib/* $(sketch_name)
+symlink: ../include remlink
 	ln -s -r ../include/* $(sketch_name)
 
 remlink:

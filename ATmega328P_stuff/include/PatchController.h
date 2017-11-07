@@ -1,6 +1,7 @@
 #ifndef PATCHCONTROLLER_H
 #define PATCHCONTROLLER_H
 
+#include <SoftwareSerial.h>
 #include <inttypes.h>
 #define NOF_REQ_BYTES 4 ///< check PatchModule.h for size of `i2c_regs`
 #define MAX_DEVICES 5 ///< 128 is theoretical limit for I2C; this is for our system
@@ -60,7 +61,7 @@ volatile InputLogic inputLogic;
 // And the slider switch ISR for modifying the above variable.
 void logicSwitchISR();
 
-SoftwareSerial bluetoothSerial(ssRX, ssTX);
+SoftwareSerial bluetoothSerial(10, 11);
 
 //-----------------------------------------------------------------------//
 
@@ -128,8 +129,8 @@ public:
     // Validates connected devices for operation, then sets logic depending on
     // tangible or IFTTT.
     // Called by setStatus.
-    void validateIfttt();
-    void validateTangible();
+    MasterStatus validateIfttt();
+    MasterStatus validateTangible();
     void updateMasterStatus();
 
     // I2C-specific functions for dumping data to and fro.
@@ -153,6 +154,6 @@ public:
     void setActiveState(uint8_t activeStateArr[], uint8_t slaveAddr, uint8_t state);
 
     //------------------------------------------------------//
-}
+};
 
 #endif

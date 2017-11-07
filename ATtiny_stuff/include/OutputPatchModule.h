@@ -25,7 +25,7 @@ class VibMotorModule : public OutputPatchModule {
 
 public:
 
-    static const uint8_t vibMotorPin = 3; 
+    static const uint8_t vibMotorPin = 1; // PWM pin
 
     VibMotorModule();
     void writeOutput();

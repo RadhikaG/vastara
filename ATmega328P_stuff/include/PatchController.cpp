@@ -1,16 +1,19 @@
 #include <Arduino.h>
-#include <Wire.h>
-#include <SoftwareSerial.h>
 #include "PatchController.h"
+#include <Wire.h>
 
 PatchController::PatchController() {
     // Setting global variables
     initVariables(CURRENT);
     initVariables(CONFIG);
 
+    pinMode(ledPin, OUTPUT);
+    pinMode(modeSwitchPin, INPUT);
+    pinMode(logicSwitchPin, INPUT);
+
     masterMode = digitalRead(modeSwitchPin);
     inputLogic = digitalRead(logicSwitchPin);
-    masterStatus = updateMasterStatus();
+    updateMasterStatus();
 
     // Initializing I2C master.
     Wire.begin();
@@ -235,9 +238,9 @@ MasterStatus PatchController::validateTangible() {
         nof_config_inputs = nof_current_inputs;
         nof_config_outputs = nof_current_outputs;
 
-        copyArray(configDevices, currentDevices);
-        copyArray(configInputDevices, currentInputDevices);
-        copyArray(configOutputDevices, currentOutputDevices);
+        copyArray(nof_current_devices, configDevices, currentDevices);
+        copyArray(nof_current_inputs, configInputDevices, currentInputDevices);
+        copyArray(nof_current_outputs, configOutputDevices, currentOutputDevices);
 
         return VALID_CONNECTED;
     }
@@ -264,7 +267,7 @@ void PatchController::sendDataTo(uint8_t slaveAddr, uint8_t data) {
 
 uint16_t PatchController::receiveDataFrom(uint8_t slaveAddr, InputParam inputParam) {
     // Ref: https://www.arduino.cc/en/Tutorial/MasterReader
-    Wire.request(slaveAddr, NOF_REQ_BYTES);
+    Wire.requestFrom(slaveAddr, NOF_REQ_BYTES);
 
     // Data can either be a 1-bit 1 or 0 value (digital), or a 10-bit analog
     // value (0 to 1023), which is why we return a 16-bit integer in this function
@@ -366,7 +369,7 @@ void PatchController::pollDevices() {
         uint8_t i;
         for (i = 0; i < nof_current_inputs; i++) {
             uint8_t slaveAddr = currentInputDevices[i];
-            uint8_t rawInputData = receiveDataFrom(slaveAddr);
+            uint8_t rawInputData = receiveDataFrom(slaveAddr, DATA);
 
             uint8_t rawInputState;
             if (rawInputData >= 512) {
@@ -376,7 +379,7 @@ void PatchController::pollDevices() {
                 rawInputState = 0x00; // LOW
             }
 
-            uint8_t activateOutputState = ~(rawInputState ^ getActiveState(slaveAddr));
+            uint8_t activateOutputState = ~(rawInputState ^ getActiveState(currentActiveState, slaveAddr));
 
             // We perform no logical operations on the first input checked
             if (i == 0) {
