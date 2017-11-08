@@ -4,7 +4,19 @@
 
 #include "PatchController.h"
 
-//---------- Global ISR Routines and Variables -------------//
+//---------- Static ISR Routines and Variables -------------//
+
+volatile MasterState masterState; ///< value depends on status of central patch
+
+// Modified by an ISR set for an onboard slider switch.
+// Controls if system is configured tangibly or via IFTTT.
+volatile MasterMode masterMode;
+
+// The below is only valid for tangible mode.
+// Controls whether the inputs are combined using OR or AND.
+volatile InputLogic inputLogic;
+
+volatile uint8_t statusLEDState; ///< to save state of blinking LED
 
 SoftwareSerial bluetoothSerial(PatchController::ssRX, PatchController::ssTX);
 
@@ -20,24 +32,24 @@ void PatchController::setStatusLEDColor(uint8_t red, uint8_t green, uint8_t blue
 }
 
 void PatchController::setStatusLED() {
-//    switch (masterState) {
-//        case COMPLETELY_DISCONNECTED: // Solid green
-//            Timer1.detachInterrupt();
-//            setStatusLEDColor(0, 255, 0);
-//            break;
-//        case IFTTT_IN_PROGRESS: // Blinking green
-//            Timer1.attachInterrupt(statusLEDISR);
-//            setStatusLEDColor(0, 255, 0);
-//            break;
-//        case INVALID: // Blinking red
-//            Timer1.attachInterrupt(statusLEDISR);
-//            setStatusLEDColor(255, 0, 0);
-//            break;
-//        case VALID_CONNECTED: // Solid blue
-//            Timer1.detachInterrupt();
-//            setStatusLEDColor(0, 0, 255);
-//            break;
-//    }
+    switch (masterState) {
+        case COMPLETELY_DISCONNECTED: // Solid green
+            Timer1.detachInterrupt();
+            setStatusLEDColor(0, 255, 0);
+            break;
+        case IFTTT_IN_PROGRESS: // Blinking green
+            Timer1.attachInterrupt(statusLEDISR);
+            setStatusLEDColor(0, 255, 0);
+            break;
+        case INVALID: // Blinking red
+            Timer1.attachInterrupt(statusLEDISR);
+            setStatusLEDColor(255, 0, 0);
+            break;
+        case VALID_CONNECTED: // Solid blue
+            Timer1.detachInterrupt();
+            setStatusLEDColor(0, 0, 255);
+            break;
+    }
 }
 
 void PatchController::statusLEDISR() {

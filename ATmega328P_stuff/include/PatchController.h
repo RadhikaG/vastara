@@ -42,6 +42,7 @@ enum ConfigState {
     ERROR
 };
 
+
 //-----------------------------------------------------------------------//
 
 /* \brief Central Patch <-> Patch Module <-> Sensor/Device
@@ -68,7 +69,6 @@ public:
     static const uint8_t statusLEDBlue = 13;
     static const uint8_t statusLEDGreen = 13;
     static const uint8_t statusLEDCommon = 13;
-    volatile uint8_t statusLEDState;
 
     // Digital input pin 4 for slider switch to switch between tangible and IFTTT
     // mode.
@@ -77,18 +77,6 @@ public:
     // Digital input pin 5 for slider switch to switch between AND and OR for 
     // input combining.
     static const uint8_t logicSwitchPin = 5;
-
-    //--------- Interrupt volative variables ---------------//
-
-    volatile MasterState masterState; ///< value depends on status of central patch
-
-    // Modified by an ISR set for an onboard slider switch.
-    // Controls if system is configured tangibly or via IFTTT.
-    volatile MasterMode masterMode;
-
-    // The below is only valid for tangible mode.
-    // Controls whether the inputs are combined using OR or AND.
-    volatile InputLogic inputLogic;
 
     //--------- Current state of the system ----------------//
 
@@ -123,11 +111,11 @@ public:
 
     //------------ Interrupt functions ---------------------//
 
-    void setStatusLED();
-    void statusLEDISR();
-    void masterModeSwitchISR();
-    void inputLogicSwitchISR();
-    void initInterrupts();
+    static void setStatusLED();
+    static void statusLEDISR();
+    static void masterModeSwitchISR();
+    static void inputLogicSwitchISR();
+    static void initInterrupts();
 
     //-----------------------------------------------------//
 
@@ -155,7 +143,7 @@ public:
 
     //------------------ Helper functions ------------------//
 
-    void setStatusLEDColor(uint8_t red, uint8_t green, uint8_t blue);
+    static void setStatusLEDColor(uint8_t red, uint8_t green, uint8_t blue);
     uint8_t isInput(uint8_t slaveAddr);
     uint8_t isOutput(uint8_t slaveAddr);
     void initVariables(uint8_t varType);
