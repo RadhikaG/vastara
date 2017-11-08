@@ -10,10 +10,10 @@
 
 //---------- Global ISR Routines and Variables -------------//
 
-enum MasterStatus {
+enum MasterState {
     COMPLETELY_DISCONNECTED,
-    IFTTT_INVALID,
-    TANGIBLE_INVALID,
+    IFTTT_IN_PROGRESS,
+    INVALID,
     VALID_CONNECTED
 }; 
 
@@ -27,7 +27,7 @@ enum InputLogic {
     AND
 };
 
-enum InputParam {
+enum SlaveParam {
     DATA = 0,
     ACTIVE_STATE = 2
 };
@@ -42,27 +42,6 @@ enum ConfigState {
     ERROR
 };
 
-volatile MasterStatus masterStatus; ///< value depends on status of central patch
-// Sets the delay for the status LED blinking frequency, whenever the device
-// status is changed.
-void setStatusLEDDelay();
-// Just makes the LED blink according to the delay set above.
-void statusLEDISR();
-
-// Modified by an ISR set for an onboard slider switch.
-// Controls if system is configured tangibly or via IFTTT.
-volatile MasterMode masterMode; 
-// And the slider switch ISR for modifying the above variable.
-void modeSwitchISR();
-
-// The below is only valid for tangible mode.
-// Controls whether the inputs are combined using OR or AND.
-volatile InputLogic inputLogic;
-// And the slider switch ISR for modifying the above variable.
-void logicSwitchISR();
-
-SoftwareSerial bluetoothSerial(10, 11);
-
 //-----------------------------------------------------------------------//
 
 /* \brief Central Patch <-> Patch Module <-> Sensor/Device
@@ -72,6 +51,10 @@ SoftwareSerial bluetoothSerial(10, 11);
 class PatchController {
 
 public:
+    //**************** Class variables *********************//
+
+    // TODO: change pins depending on interrupt and PWM usage
+
     // Analog-in 4 and 5 reserved for SDA and SCL for I2C respectively.
 
     // Digital pins 10 and 11 for HC-05 bluetooth module. We don't use the default
@@ -80,10 +63,13 @@ public:
     static const uint8_t ssRX = 10;
     static const uint8_t ssTX = 11;
 
-    // Digital output pin 13 for status LED.
-    static const uint8_t ledPin = 13;
+    // RGB LED for status LED; common anode (?)
+    static const uint8_t statusLEDRed = 13;
+    static const uint8_t statusLEDBlue = 13;
+    static const uint8_t statusLEDGreen = 13;
+    static const uint8_t statusLEDCommon = 13;
+    volatile uint8_t statusLEDState;
 
-    // TODO: change switch pins depending on interrupts
     // Digital input pin 4 for slider switch to switch between tangible and IFTTT
     // mode.
     static const uint8_t modeSwitchPin = 4;
@@ -91,6 +77,18 @@ public:
     // Digital input pin 5 for slider switch to switch between AND and OR for 
     // input combining.
     static const uint8_t logicSwitchPin = 5;
+
+    //--------- Interrupt volative variables ---------------//
+
+    volatile MasterState masterState; ///< value depends on status of central patch
+
+    // Modified by an ISR set for an onboard slider switch.
+    // Controls if system is configured tangibly or via IFTTT.
+    volatile MasterMode masterMode;
+
+    // The below is only valid for tangible mode.
+    // Controls whether the inputs are combined using OR or AND.
+    volatile InputLogic inputLogic;
 
     //--------- Current state of the system ----------------//
 
@@ -119,32 +117,45 @@ public:
     uint8_t configOutputDevices[MAX_DEVICES];
     uint8_t configActiveState[16]; // 16 * 8 = 128
 
-    //-----------------------------------------------------------------------//
+    //**************** Class functions *********************//
 
     PatchController();
+
+    //------------ Interrupt functions ---------------------//
+
+    void setStatusLED();
+    void statusLEDISR();
+    void masterModeSwitchISR();
+    void inputLogicSwitchISR();
+    void initInterrupts();
+
+    //-----------------------------------------------------//
 
     // Takes in integer stream from mobile app via Bluetooth, and configures
     // the application logic accordingly.
     void iftttConfig();
+
     // Validates connected devices for operation, then sets logic depending on
     // tangible or IFTTT.
-    // Called by setStatus.
-    MasterStatus validateIfttt();
-    MasterStatus validateTangible();
-    void updateMasterStatus();
+    // Called by validateMasterState().
+    MasterState validateIfttt();
+    MasterState validateTangible();
+    void validateMasterState();
 
     // I2C-specific functions for dumping data to and fro.
     void sendDataTo(uint8_t slaveAddr, uint8_t data);
-    uint16_t receiveDataFrom(uint8_t slaveAddr, InputParam inputParam);
+    uint16_t receiveDataFrom(uint8_t slaveAddr, SlaveParam slaveParam);
 
     // Finds all the I2C devices on the bus. 
     // Invokes validateIfttt or validateTangible after scanning done.
     void scanForI2CDevices();
+
     // Application logic loop.
     void pollDevices();
 
     //------------------ Helper functions ------------------//
 
+    void setStatusLEDColor(uint8_t red, uint8_t green, uint8_t blue);
     uint8_t isInput(uint8_t slaveAddr);
     uint8_t isOutput(uint8_t slaveAddr);
     void initVariables(uint8_t varType);
