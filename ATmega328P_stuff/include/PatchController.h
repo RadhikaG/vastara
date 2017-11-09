@@ -32,7 +32,7 @@ enum SlaveParam {
     ACTIVE_STATE = 2
 };
 
-enum ConfigState {
+enum IFTTTConfigState {
     NOT_STARTED,
     LOGIC,
     DEVICE_ADDR0,
@@ -54,29 +54,34 @@ class PatchController {
 public:
     //**************** PatchController Pins *********************//
 
-    // TODO: change pins depending on interrupt and PWM usage
-
     // Analog-in 4 and 5 reserved for SDA and SCL for I2C respectively.
 
-    // Digital pins 10 and 11 for HC-05 bluetooth module. We don't use the default
+    // Digital pins for HC-05 bluetooth module. We don't use the default
     // built-in UART interface for Bluetooth, instead we're using SoftwareSerial 
-    // on pins 10 and 11, to use the default UART for PC debugging.
-    static const uint8_t btRX = 10; ///< SoftwareSerial
-    static const uint8_t btTX = 11; ///< SoftwareSerial
+    // on 2 digital pins, to use the default UART for PC debugging.
+    static const uint8_t btRX = A0; ///< SoftwareSerial
+    static const uint8_t btTX = A1; ///< SoftwareSerial
 
     // RGB LED for status LED; common anode (?)
-    static const uint8_t statusLEDRed = 13; ///< PWM
-    static const uint8_t statusLEDBlue = 13; ///< PWM
-    static const uint8_t statusLEDGreen = 13; ///< PWM
-    static const uint8_t statusLEDCommon = 13; ///< Timer1 interrupt
+    static const uint8_t statusLEDRed = 6; ///< PWM
+    static const uint8_t statusLEDBlue = 9; ///< PWM
+    static const uint8_t statusLEDGreen = 10; ///< PWM
+    static const uint8_t statusLEDCommon = 7; ///< any digital pin for Timer1
 
-    // Digital input pin 4 for slider switch to switch between tangible and IFTTT
+    // Digital input pin for slider switch to switch between tangible and IFTTT
     // mode.
-    static const uint8_t modeSwitchPin = 4; ///< External interrupt
+    static const uint8_t modeSwitchPin = 2; ///< External interrupt
 
-    // Digital input pin 5 for slider switch to switch between AND and OR for 
+    // Digital input pin for slider switch to switch between AND and OR for 
     // input combining.
-    static const uint8_t logicSwitchPin = 5; ///< External interrupt
+    static const uint8_t logicSwitchPin = 3; ///< External interrupt
+
+    // Push-button for initializing IFTTT config transfer process
+    static const uint8_t iftttConfigButton = 8;
+
+    // For I2C:
+    static const uint8_t sdaPin = 4;
+    static const uint8_t sclPin = 5;
 
     //--------- Current state of the system ----------------//
 
@@ -111,11 +116,12 @@ public:
 
     //------------ Interrupt functions ---------------------//
 
-    static void setStatusLED();
     static void statusLEDISR();
     static void masterModeSwitchISR();
     static void inputLogicSwitchISR();
-    static void initInterrupts();
+
+    static void setStatusLED();
+    void initInterrupts();
 
     //-----------------------------------------------------//
 
@@ -132,7 +138,7 @@ public:
 
     // I2C-specific functions for dumping data to and fro.
     void sendDataTo(uint8_t slaveAddr, uint8_t data);
-    uint16_t receiveDataFrom(uint8_t slaveAddr, SlaveParam slaveParam);
+    int receiveDataFrom(uint8_t slaveAddr, SlaveParam slaveParam);
 
     // Finds all the I2C devices on the bus. 
     // Invokes validateIfttt or validateTangible after scanning done.

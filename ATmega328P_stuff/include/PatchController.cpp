@@ -18,7 +18,12 @@ volatile InputLogic inputLogic;
 
 volatile uint8_t statusLEDState; ///< to save state of blinking LED
 
-SoftwareSerial bluetoothSerial(PatchController::ssRX, PatchController::ssTX);
+SoftwareSerial bluetoothSerial(PatchController::btRX, PatchController::btTX);
+
+// Variables for debouncing IFTTT config push-button
+bool lastIftttButtonState = LOW;
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 50;
 
 void PatchController::setStatusLEDColor(uint8_t red, uint8_t green, uint8_t blue) {
     #ifdef COMMON_ANODE
@@ -37,17 +42,19 @@ void PatchController::setStatusLED() {
             Timer1.detachInterrupt();
             setStatusLEDColor(0, 255, 0);
             break;
-        case IFTTT_IN_PROGRESS: // Blinking green
-            Timer1.attachInterrupt(statusLEDISR);
+        case IFTTT_IN_PROGRESS: // Blinking green at 500 ms interval
+            Timer1.attachInterrupt(statusLEDISR, 500000);
             setStatusLEDColor(0, 255, 0);
             break;
-        case INVALID: // Blinking red
-            Timer1.attachInterrupt(statusLEDISR);
+        case INVALID: // Blinking red at 1 sec interval
+            Timer1.attachInterrupt(statusLEDISR, 1000000);
             setStatusLEDColor(255, 0, 0);
             break;
         case VALID_CONNECTED: // Solid blue
             Timer1.detachInterrupt();
             setStatusLEDColor(0, 0, 255);
+            break;
+        default:
             break;
     }
 }
@@ -66,13 +73,18 @@ void PatchController::inputLogicSwitchISR() {
 }
 
 void PatchController::initInterrupts() {
-    // External event interrupts for switches
-    //attachInterrupt(0, masterModeSwitchISR, CHANGE);
-    //attachInterrupt(0, inputLogicSwitchISR, CHANGE);
+    // External event interrupts for slider switches
+    attachInterrupt(digitalPinToInterrupt(2), masterModeSwitchISR, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(3), inputLogicSwitchISR, CHANGE);
 
-    // Timer interrupt for status LED blinking
+    // Pin change interrupt for push-button config.
+    // Ref: https://playground.arduino.cc/Main/PinChangeInterrupt
+    // TODO: We're currently doing this using polling in pollDevices(), 
+    // do with pin-change interrupt.
+
+    // Timer interrupt for status LED blinking every 1 second
     Timer1.initialize(1000000);
-    // We modify the timer ISR every time the master state changes
+    // We enable/disable the timer ISR every time the master state changes
     Timer1.detachInterrupt();
 }
 
@@ -91,13 +103,14 @@ PatchController::PatchController() {
 
     pinMode(modeSwitchPin, INPUT);
     pinMode(logicSwitchPin, INPUT);
+    pinMode(iftttConfigButton, INPUT);
 
     masterMode = digitalRead(modeSwitchPin);
     inputLogic = digitalRead(logicSwitchPin);
 
-    // Initializing I2C master.
+    // Initializing I2C master on digital pins 4 and 5.
     Wire.begin();
-    // Start Serial for output.
+    // Start Serial for PC output.
     Serial.begin(9600);
 
     // Initializing Bluetooth.
@@ -105,27 +118,18 @@ PatchController::PatchController() {
 
     initInterrupts();
 
-    // All initialization done, now we start our system
+    // All initialization done, now we start our system.
 
+    scanForI2CDevices();
     validateMasterState();
 }
 
 uint8_t PatchController::isInput(uint8_t slaveAddr) {
-    if ((slaveAddr >> 4) & 0x01) {
-        return 1;
-    }
-    else {
-        return 0;
-    }
+    return ((slaveAddr >> 4) & 0x01) ? 1 : 0;
 }
 
 uint8_t PatchController::isOutput(uint8_t slaveAddr) {
-    if ((slaveAddr >> 4) & 0x02) {
-        return 1;
-    }
-    else {
-        return 0;
-    }
+    return ((slaveAddr >> 4) & 0x02) ? 1 : 0;
 }
 
 void PatchController::initVariables(uint8_t varType) {
@@ -163,7 +167,7 @@ void PatchController::initVariables(uint8_t varType) {
 void PatchController::iftttConfig() {
     // We can only configure the system when the central patch is disconnected
     // from all mini-patches.
-    if (masterState == COMPLETELY_DISCONNECTED && masterMode == IFTTT) {
+    if (masterState == IFTTT_IN_PROGRESS && masterMode == IFTTT) {
         // API Details:
         // Start - 1 byte - '*'
         // Operator - 1 byte - ['a'|'o'] // AND or OR
@@ -171,92 +175,122 @@ void PatchController::iftttConfig() {
         // Device active state - 1 byte - ['0'|'1']
         // ... [for MAX_DEVICES devices]
         // End - 1 byte - '#'
+        //
+        // We expect to receive device addresses in increasing order from the
+        // Android app. 
+        // 
         // Essentially a state machine.
-
-        initVariables(CONFIG);
 
         char command;
         uint8_t currSlaveAddr;
 
-        ConfigState configState = NOT_STARTED;
-        while (bluetoothSerial.available()) {
-            command = ((uint8_t)bluetoothSerial.read());
+        IFTTTConfigState iftttConfigState = NOT_STARTED;
 
-            if (configState == NOT_STARTED) {
-                if (command == '*') {
-                    configState = LOGIC;
-                }
-                else {
-                    configState = ERROR;
+        // Stream must've gotten interrupted mid-config, hence we reset it,
+        // and ask Android to sent config again.
+        while (iftttConfigState != DONE) {
+            initVariables(CONFIG);
+            // We tell our Android phone to send us config stream.
+            bluetoothSerial.print('*');
+
+            // We timeout our bluetooth connection after 5 seconds
+            unsigned long timeout_interval = 5000;
+            unsigned long startMillis = millis();
+            bool timeout = false;
+
+            while (!bluetoothSerial.available()) {
+                // we wait for bluetooth to respond
+                if (millis() - startMillis >= timeout_interval) {
+                    timeout = true;
+                    break;
                 }
             }
-            else if (configState == LOGIC) {
-                if (command == 'o' || command == 'a') {
-                    inputLogic = (command == 'o') ? OR : AND;
-                    configState = DEVICE_ADDR0;
-                }
-                else {
-                    configState = ERROR;
-                }
-            } 
-            else if (configState == DEVICE_ADDR0) {
-                uint8_t intCmd = command - '0';
-                if (intCmd >= 0 && intCmd <= 9) {
-                    currSlaveAddr = intCmd * 16;
-                    configState = DEVICE_ADDR1;
-                }
-                else if (command == '#') {
-                    configState = DONE;
-                }
-                else {
-                    configState = ERROR;
-                }
-            }
-            else if (configState == DEVICE_ADDR1) {
-                uint8_t intCmd = command - '0';
-                if (intCmd >= 0 && intCmd <= 9) {
-                    currSlaveAddr += intCmd;
-
-                    // Setting config variables
-                    configDevices[nof_config_devices] = currSlaveAddr;
-                    nof_config_devices++;
-                    if (isInput(currSlaveAddr)) {
-                        currentInputDevices[nof_current_inputs] = currSlaveAddr;
-                        nof_current_inputs++;
-                    }
-                    else if (isOutput(currSlaveAddr)) {
-                        currentOutputDevices[nof_current_outputs] = currSlaveAddr;
-                        nof_current_outputs++;
-                    }
-
-                    configState = DEVICE_ACTIVE_STATE;
-                }
-                else {
-                    configState = ERROR;
-                }
-            }
-            else if (configState == DEVICE_ACTIVE_STATE) {
-                if (command == '0' || command == '1') {
-                    uint8_t activeState = (command == '0') ? 0 : 1;
-                    setActiveState(configActiveState, currSlaveAddr, activeState);
-                    configState = DEVICE_ADDR0;
-                }
-                else {
-                    configState = ERROR;
-                }
-            }
-
-            if (configState == DONE || configState == ERROR) {
+            if (timeout) {
+                // Break connection; we must start config process manually 
+                // again.
+                iftttConfigState = ERROR;
                 break;
             }
 
-            delay(1);
-        }
+            // Received data from bluetooth, now we process config received.
+            while (bluetoothSerial.available()) {
+                command = ((uint8_t)bluetoothSerial.read());
 
-        if (configState == ERROR) {
-            // stream must've gotten interrupted mid-config, hence we reset it
-            initVariables(CONFIG);
-            // TODO: ask mobile to stream config again
+                if (iftttConfigState == NOT_STARTED) {
+                    if (command == '*') {
+                        iftttConfigState = LOGIC;
+                    }
+                    else {
+                        iftttConfigState = ERROR;
+                    }
+                }
+                else if (iftttConfigState == LOGIC) {
+                    if (command == 'o' || command == 'a') {
+                        inputLogic = (command == 'o') ? OR : AND;
+                        iftttConfigState = DEVICE_ADDR0;
+                    }
+                    else {
+                        iftttConfigState = ERROR;
+                    }
+                } 
+                else if (iftttConfigState == DEVICE_ADDR0) {
+                    // signed 8-bit value
+                    char intCmd = command - '0';
+                    if (command == '#') {
+                        iftttConfigState = DONE;
+                    }
+                    else if (intCmd >= 0 && intCmd <= 9) {
+                        currSlaveAddr = intCmd * 16;
+                        iftttConfigState = DEVICE_ADDR1;
+                    }
+                    else {
+                        iftttConfigState = ERROR;
+                    }
+                }
+                else if (iftttConfigState == DEVICE_ADDR1) {
+                    // signed 8-bit value
+                    char intCmd = command - '0';
+                    if (intCmd >= 0 && intCmd <= 9) {
+                        currSlaveAddr += intCmd;
+
+                        // Setting config variables
+                        configDevices[nof_config_devices] = currSlaveAddr;
+                        nof_config_devices++;
+                        if (isInput(currSlaveAddr)) {
+                            currentInputDevices[nof_current_inputs] = currSlaveAddr;
+                            nof_current_inputs++;
+                        }
+                        else if (isOutput(currSlaveAddr)) {
+                            currentOutputDevices[nof_current_outputs] = currSlaveAddr;
+                            nof_current_outputs++;
+                        }
+
+                        iftttConfigState = DEVICE_ACTIVE_STATE;
+                    }
+                    else {
+                        iftttConfigState = ERROR;
+                    }
+                }
+                else if (iftttConfigState == DEVICE_ACTIVE_STATE) {
+                    if (command == '0' || command == '1') {
+                        uint8_t activeState = (command == '0') ? 0 : 1;
+                        setActiveState(configActiveState, currSlaveAddr, activeState);
+                        iftttConfigState = DEVICE_ADDR0;
+                    }
+                    else {
+                        iftttConfigState = ERROR;
+                    }
+                }
+
+                if (iftttConfigState == DONE || iftttConfigState == ERROR) {
+                    // We don't need the rest of the data in the serial buffer.
+                    // If we end in ERROR, we start bluetooth config transfer
+                    // again.
+                    break;
+                }
+
+                delay(1);
+            }
         }
     }
 }
@@ -359,7 +393,7 @@ void PatchController::sendDataTo(uint8_t slaveAddr, uint8_t data) {
     }
 }
 
-uint16_t PatchController::receiveDataFrom(uint8_t slaveAddr, SlaveParam slaveParam) {
+int PatchController::receiveDataFrom(uint8_t slaveAddr, SlaveParam slaveParam) {
     // Ref: https://www.arduino.cc/en/Tutorial/MasterReader
     Wire.requestFrom(slaveAddr, NOF_REQ_BYTES);
 
@@ -367,13 +401,13 @@ uint16_t PatchController::receiveDataFrom(uint8_t slaveAddr, SlaveParam slavePar
     if (Wire.available() != 4) {
         scanForI2CDevices();
         validateMasterState();
-        return;
+        return -1;
     }
 
     // Data can either be a 1-bit 1 or 0 value (digital), or a 10-bit analog
     // value (0 to 1023), which is why we return a 16-bit integer in this function
     uint8_t i2cIndex = 0;
-    uint16_t retData = 0;
+    int retData = 0;
 
     while (Wire.available()) {
         uint8_t val = Wire.read();
@@ -457,23 +491,61 @@ void PatchController::setActiveState(uint8_t activeStateArr[], uint8_t slaveAddr
 
 void PatchController::pollDevices() {
     // Run in loop() of Arduino sketch
-    // see enum `MasterState` if comparison not clear
-    if (masterState < VALID_CONNECTED) {
+
+    //------ Debouncing IFTTT push-button for user config ------//
+
+    // We poll this button because the function to be run on this
+    // button being pushed, is involved and time-consuming, hence
+    // poorly suited for running as an ISR. We could set a flag
+    // and run the function in the main loop as well, but the
+    // pin-change interrupt (we've run out of external interrupts)
+    // is quite involved with debouncing.
+    // TODO: Make pin-change interrupt for IFTTT push-button.
+    if (masterMode == IFTTT && masterState != IFTTT_IN_PROGRESS) {
+        bool iffftButtonState = digitalRead(iftttConfigButton);
+
+        // If the button changed, can be due to noise or pressing
+        if (iffftButtonState != lastIftttButtonState) {
+            lastDebounceTime = millis();
+        }
+
+        if ((millis() - lastDebounceTime) > debounceDelay) {
+            // whatever the reading is at, it's been there for longer than the 
+            // debounce delay, so take it as the actual current state:
+            if (iffftButtonState == HIGH) {
+                masterState = IFTTT_IN_PROGRESS;
+                setStatusLED();
+                iftttConfig();
+                lastDebounceTime = millis();
+
+                // Fresh config uploaded, we now check the slaves.
+                scanForI2CDevices();
+                validateMasterState();
+            }
+        }
+    }
+
+    //---------------------------------------------------------//
+
+    if (masterState == COMPLETELY_DISCONNECTED ||
+           masterState == INVALID) {
         scanForI2CDevices();
         validateMasterState();
-        delay(1000); // we scan for new connected patches every 1 second
+        // we scan for new connected patches every 1 second
+        delay(1000);
     }
+
     // System is valid and configured; now it runs according to user-defined logic
-    else {
+    if (masterState == VALID_CONNECTED) {
         uint8_t outputState;
 
         uint8_t i;
         for (i = 0; i < nof_current_inputs; i++) {
             uint8_t slaveAddr = currentInputDevices[i];
-            uint8_t rawInputData = receiveDataFrom(slaveAddr, DATA);
+            int rawInputData = receiveDataFrom(slaveAddr, DATA);
 
             // if change in master state detected during data transfer
-            if (masterState == INVALID) {
+            if (masterState != VALID_CONNECTED) {
                 break;
             }
 
@@ -485,7 +557,8 @@ void PatchController::pollDevices() {
                 rawInputState = 0; // LOW
             }
 
-            uint8_t activateOutputState = ~(rawInputState ^ getActiveState(currentActiveState, slaveAddr));
+            uint8_t activateOutputState = ~(rawInputState ^ 
+                    getActiveState(currentActiveState, slaveAddr));
 
             // We perform no logical operations on the first input checked
             if (i == 0) {
@@ -505,7 +578,7 @@ void PatchController::pollDevices() {
             uint8_t slaveAddr = currentOutputDevices[i];
             sendDataTo(slaveAddr, outputState);
             // if change in master state detected during data transfer
-            if (masterState == INVALID) {
+            if (masterState != VALID_CONNECTED) {
                 break;
             }
         }
