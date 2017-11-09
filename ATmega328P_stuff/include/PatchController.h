@@ -52,7 +52,7 @@ enum ConfigState {
 class PatchController {
 
 public:
-    //**************** Class variables *********************//
+    //**************** PatchController Pins *********************//
 
     // TODO: change pins depending on interrupt and PWM usage
 
@@ -61,22 +61,22 @@ public:
     // Digital pins 10 and 11 for HC-05 bluetooth module. We don't use the default
     // built-in UART interface for Bluetooth, instead we're using SoftwareSerial 
     // on pins 10 and 11, to use the default UART for PC debugging.
-    static const uint8_t ssRX = 10;
-    static const uint8_t ssTX = 11;
+    static const uint8_t btRX = 10; ///< SoftwareSerial
+    static const uint8_t btTX = 11; ///< SoftwareSerial
 
     // RGB LED for status LED; common anode (?)
-    static const uint8_t statusLEDRed = 13;
-    static const uint8_t statusLEDBlue = 13;
-    static const uint8_t statusLEDGreen = 13;
-    static const uint8_t statusLEDCommon = 13;
+    static const uint8_t statusLEDRed = 13; ///< PWM
+    static const uint8_t statusLEDBlue = 13; ///< PWM
+    static const uint8_t statusLEDGreen = 13; ///< PWM
+    static const uint8_t statusLEDCommon = 13; ///< Timer1 interrupt
 
     // Digital input pin 4 for slider switch to switch between tangible and IFTTT
     // mode.
-    static const uint8_t modeSwitchPin = 4;
+    static const uint8_t modeSwitchPin = 4; ///< External interrupt
 
     // Digital input pin 5 for slider switch to switch between AND and OR for 
     // input combining.
-    static const uint8_t logicSwitchPin = 5;
+    static const uint8_t logicSwitchPin = 5; ///< External interrupt
 
     //--------- Current state of the system ----------------//
 
