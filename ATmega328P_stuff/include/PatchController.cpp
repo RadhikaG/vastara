@@ -18,7 +18,7 @@ volatile InputLogic inputLogic;
 
 volatile uint8_t statusLEDState; ///< to save state of blinking LED
 
-SoftwareSerial bluetoothSerial(PatchController::btRX, PatchController::btTX);
+SoftwareSerial bluetoothSerial(PatchController::ssRX, PatchController::ssTX);
 
 // Variables for debouncing IFTTT config push-button
 bool lastIftttButtonState = LOW;

@@ -59,13 +59,13 @@ public:
     // Digital pins for HC-05 bluetooth module. We don't use the default
     // built-in UART interface for Bluetooth, instead we're using SoftwareSerial 
     // on 2 digital pins, to use the default UART for PC debugging.
-    static const uint8_t btRX = A0; ///< SoftwareSerial
-    static const uint8_t btTX = A1; ///< SoftwareSerial
+    static const uint8_t ssRX = A0; ///< SoftwareSerial
+    static const uint8_t ssTX = A1; ///< SoftwareSerial
 
     // RGB LED for status LED; common anode (?)
     static const uint8_t statusLEDRed = 6; ///< PWM
-    static const uint8_t statusLEDBlue = 9; ///< PWM
-    static const uint8_t statusLEDGreen = 10; ///< PWM
+    static const uint8_t statusLEDGreen = 9; ///< PWM
+    static const uint8_t statusLEDBlue = 10; ///< PWM
     static const uint8_t statusLEDCommon = 7; ///< any digital pin for Timer1
 
     // Digital input pin for slider switch to switch between tangible and IFTTT
