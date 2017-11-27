@@ -3,7 +3,6 @@
 
 #include <SoftwareSerial.h>
 #include <inttypes.h>
-#define NOF_REQ_BYTES 4 ///< check PatchModule.h for size of `i2c_regs`
 #define MAX_DEVICES 5 ///< 128 is theoretical limit for I2C; this is for our system
 #define CURRENT 0
 #define CONFIG 1
@@ -54,15 +53,13 @@ class PatchController {
 public:
     //**************** PatchController Pins *********************//
 
-    // Analog-in 4 and 5 reserved for SDA and SCL for I2C respectively.
-
     // Digital pins for HC-05 bluetooth module. We don't use the default
     // built-in UART interface for Bluetooth, instead we're using SoftwareSerial 
     // on 2 digital pins, to use the default UART for PC debugging.
     static const uint8_t ssRX = A0; ///< SoftwareSerial
     static const uint8_t ssTX = A1; ///< SoftwareSerial
 
-    // RGB LED for status LED; common anode (?)
+    // RGB LED for status LED; common cathode
     static const uint8_t statusLEDRed = 6; ///< PWM
     static const uint8_t statusLEDGreen = 9; ///< PWM
     static const uint8_t statusLEDBlue = 10; ///< PWM
@@ -79,9 +76,9 @@ public:
     // Push-button for initializing IFTTT config transfer process
     static const uint8_t iftttConfigButton = 8;
 
-    // For I2C:
-    static const uint8_t sdaPin = 4;
-    static const uint8_t sclPin = 5;
+    // Analog-in 4 and 5 reserved for SDA and SCL for I2C respectively.
+    static const uint8_t sdaPin = A4;
+    static const uint8_t sclPin = A5;
 
     //--------- Current state of the system ----------------//
 

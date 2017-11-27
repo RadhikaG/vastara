@@ -3,6 +3,7 @@
 #include "TimerOne.h"
 
 #include "PatchController.h"
+#include "PatchAddress.h"
 
 //---------- Static ISR Routines and Variables -------------//
 
@@ -21,7 +22,7 @@ volatile uint8_t statusLEDState; ///< to save state of blinking LED
 SoftwareSerial bluetoothSerial(PatchController::ssRX, PatchController::ssTX);
 
 // Variables for debouncing IFTTT config push-button
-bool lastIftttButtonState = LOW;
+bool lastIftttButtonState;
 unsigned long lastDebounceTime = 0;
 unsigned long debounceDelay = 50;
 
@@ -40,6 +41,7 @@ void PatchController::setStatusLED() {
     switch (masterState) {
         case COMPLETELY_DISCONNECTED: // Solid green
             Timer1.detachInterrupt();
+            digitalWrite(statusLEDCommon, 0);
             setStatusLEDColor(0, 255, 0);
             break;
         case IFTTT_IN_PROGRESS: // Blinking green at 500 ms interval
@@ -52,6 +54,7 @@ void PatchController::setStatusLED() {
             break;
         case VALID_CONNECTED: // Solid blue
             Timer1.detachInterrupt();
+            digitalWrite(statusLEDCommon, 0);
             setStatusLEDColor(0, 0, 255);
             break;
         default:
@@ -74,8 +77,10 @@ void PatchController::inputLogicSwitchISR() {
 
 void PatchController::initInterrupts() {
     // External event interrupts for slider switches
-    attachInterrupt(digitalPinToInterrupt(2), masterModeSwitchISR, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(3), inputLogicSwitchISR, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(modeSwitchPin), masterModeSwitchISR, 
+            CHANGE);
+    attachInterrupt(digitalPinToInterrupt(logicSwitchPin), inputLogicSwitchISR, 
+            CHANGE);
 
     // Pin change interrupt for push-button config.
     // Ref: https://playground.arduino.cc/Main/PinChangeInterrupt
@@ -107,6 +112,8 @@ PatchController::PatchController() {
 
     masterMode = digitalRead(modeSwitchPin);
     inputLogic = digitalRead(logicSwitchPin);
+
+    lastIftttButtonState = LOW;
 
     // Initializing I2C master on digital pins 4 and 5.
     Wire.begin();
@@ -208,7 +215,9 @@ void PatchController::iftttConfig() {
             if (timeout) {
                 // Break connection; we must start config process manually 
                 // again.
+                Serial.println("Bluetooth connection timed out.");
                 iftttConfigState = ERROR;
+                setStatusLED();
                 break;
             }
 
@@ -352,7 +361,7 @@ MasterState PatchController::validateTangible() {
     if (nof_current_devices == 0) {
         return COMPLETELY_DISCONNECTED;
     }
-    else if (nof_current_inputs > 0 || nof_current_outputs > 0) {
+    else if (nof_current_inputs > 0 && nof_current_outputs > 0) {
         // copying current state variables to user config
         nof_config_devices = nof_current_devices;
         nof_config_inputs = nof_current_inputs;
@@ -395,40 +404,62 @@ void PatchController::sendDataTo(uint8_t slaveAddr, uint8_t data) {
 
 int PatchController::receiveDataFrom(uint8_t slaveAddr, SlaveParam slaveParam) {
     // Ref: https://www.arduino.cc/en/Tutorial/MasterReader
-    Wire.requestFrom(slaveAddr, NOF_REQ_BYTES);
 
-    // We have 4 available registers of uint8_t in all mini-patches
-    if (Wire.available() != 4) {
+    if (slaveParam == DATA) {
+        // Setting position to read from
+        Wire.beginTransmission(slaveAddr);
+        Wire.write(0);
+        Wire.endTransmission();
+    }
+    else if (slaveParam == ACTIVE_STATE) {
+        // Setting position to read from
+        Wire.beginTransmission(slaveAddr);
+        Wire.write(2);
+        Wire.endTransmission();
+    }
+    
+    Wire.requestFrom(slaveAddr, 1);
+
+    // We should have 1 byte available to read
+    if (Wire.available() != 1) {
         scanForI2CDevices();
         validateMasterState();
         return -1;
     }
 
     // Data can either be a 1-bit 1 or 0 value (digital), or a 10-bit analog
-    // value (0 to 1023), which is why we return a 16-bit integer in this function
-    uint8_t i2cIndex = 0;
+    // value (0 to 1023), which is why we return a 16-bit integer in this 
+    // function
     int retData = 0;
 
-    while (Wire.available()) {
-        uint8_t val = Wire.read();
-        if (slaveParam == DATA) {
-            if (i2cIndex == 0) {
-                // Bits 9-8
-                retData = (val << 8);
-            }
-            else if (i2cIndex == 1) {
-                // Bits 7-0
-                retData |= val;
-                return retData;
-            }
+    uint8_t val = Wire.read();
+
+    if (slaveParam == DATA) {
+        // Bits 9-8 of input data
+        retData = (val << 8);
+
+        Wire.beginTransmission(slaveAddr);
+        Wire.write(1);
+        Wire.endTransmission();
+
+        Wire.requestFrom(slaveAddr, 1);
+
+        // We should have 1 byte available to read
+        if (Wire.available() != 1) {
+            scanForI2CDevices();
+            validateMasterState();
+            return -1;
         }
-        else if (slaveParam == ACTIVE_STATE) {
-            if (i2cIndex == 2) {
-                // 1 or 0 depending on state of mini-patch switch
-                return val & 0xFFFF;
-            }
-        }
-        i2cIndex++;
+
+        val = Wire.read();
+        // Bits 7-0 of input data
+        retData |= val;
+        // Returning 10-bit value
+        return retData;
+    }
+    else if (slaveParam == ACTIVE_STATE) {
+        // 1 or 0 depending on state of mini-patch switch
+        return val & 0xFFFF;
     }
 }
 
@@ -447,15 +478,18 @@ void PatchController::scanForI2CDevices() {
             // We add it to our list of devices and update active state
             currentDevices[nof_current_devices] = slaveAddr;
             nof_current_devices++;
-            setActiveState(currentActiveState, slaveAddr, receiveDataFrom(slaveAddr,
-                        ACTIVE_STATE));
 
             if (isInput(slaveAddr)) {
                 currentInputDevices[nof_current_inputs] = slaveAddr;
+                // Active state only relevant for input patches
+                setActiveState(currentActiveState, slaveAddr, 
+                        receiveDataFrom(slaveAddr, ACTIVE_STATE));
                 nof_current_inputs++;
             }
             else if (isOutput(slaveAddr)) {
                 currentOutputDevices[nof_current_outputs] = slaveAddr;
+                // For output patches, we just set the active state to 1
+                setActiveState(currentActiveState, slaveAddr, 1);
                 nof_current_outputs++;
             }
         }
@@ -502,17 +536,11 @@ void PatchController::pollDevices() {
     // is quite involved with debouncing.
     // TODO: Make pin-change interrupt for IFTTT push-button.
     if (masterMode == IFTTT && masterState != IFTTT_IN_PROGRESS) {
+        Serial.println("IFTTT mode, checking for config upload mode");
+        
         bool iffftButtonState = digitalRead(iftttConfigButton);
-
-        // If the button changed, can be due to noise or pressing
-        if (iffftButtonState != lastIftttButtonState) {
-            lastDebounceTime = millis();
-        }
-
-        if ((millis() - lastDebounceTime) > debounceDelay) {
-            // whatever the reading is at, it's been there for longer than the 
-            // debounce delay, so take it as the actual current state:
-            if (iffftButtonState == HIGH) {
+        if (iffftButtonState == HIGH) {
+            Serial.println("Config activate button pressed.");
                 masterState = IFTTT_IN_PROGRESS;
                 setStatusLED();
                 iftttConfig();
@@ -521,14 +549,22 @@ void PatchController::pollDevices() {
                 // Fresh config uploaded, we now check the slaves.
                 scanForI2CDevices();
                 validateMasterState();
-            }
         }
+
+        delay(1000);
     }
 
     //---------------------------------------------------------//
 
-    if (masterState == COMPLETELY_DISCONNECTED ||
+    else if (masterState == COMPLETELY_DISCONNECTED ||
            masterState == INVALID) {
+        if (masterState == COMPLETELY_DISCONNECTED) {
+            Serial.println("Completely disconnected");
+        }
+        else {
+            Serial.println("Invalid");
+        }
+        
         scanForI2CDevices();
         validateMasterState();
         // we scan for new connected patches every 1 second
@@ -536,7 +572,9 @@ void PatchController::pollDevices() {
     }
 
     // System is valid and configured; now it runs according to user-defined logic
-    if (masterState == VALID_CONNECTED) {
+    else if (masterState == VALID_CONNECTED) {
+        Serial.println("Valid and connected");
+        
         uint8_t outputState;
 
         uint8_t i;
@@ -550,7 +588,14 @@ void PatchController::pollDevices() {
             }
 
             uint8_t rawInputState;
-            if (rawInputData >= 512) {
+            int highBound;
+
+            switch(slaveAddr) {
+                case LDR_SLAVE_ADDR: highBound = 800; break;
+                case BTN_SLAVE_ADDR: highBound = 0; break;
+                default: break;
+            }
+            if (rawInputData > highBound) {
                 rawInputState = 1; // HIGH
             }
             else {
@@ -583,6 +628,7 @@ void PatchController::pollDevices() {
             }
         }
 
-        delay(100);
+        // We poll connected devices every 500 ms
+        delay(500);
     }
 }

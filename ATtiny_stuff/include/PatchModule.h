@@ -1,6 +1,7 @@
 #ifndef PATCHMODULE_H
 #define PATCHMODULE_H
 
+#include <Arduino.h>
 #include <inttypes.h>
 
 class PatchModule {
@@ -37,6 +38,9 @@ public:
     static const uint8_t reg_size = 4;
     volatile uint8_t i2c_regs[reg_size];
     volatile uint8_t reg_position;
+
+    // for status LED
+    static const uint8_t LEDPin = 1;
 
     // InputPatchModules essentially just fill up `i2c_regs` in different ways for each subclass of `InputPatchModule`.
     // OutputPatchModules read off `i2c_regs` in different ways for each subclass of `OutputPatchModule`.

@@ -1,0 +1,6 @@
+#define LDR_SLAVE_ADDR 0x11
+#define ALC_SLAVE_ADDR 0x13
+#define FLEX_SLAVE_ADDR 0x15
+#define BTN_SLAVE_ADDR 0x17
+#define VIB_SLAVE_ADDR 0x21
+#define RGB_SLAVE_ADDR 0x23
